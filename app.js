@@ -1,18 +1,46 @@
-window.portfolioMotion={paused:matchMedia('(prefers-reduced-motion: reduce)').matches};
-const motionButton=document.querySelector('#motion-toggle');
-function updateMotion(){const paused=window.portfolioMotion.paused;document.body.classList.toggle('motion-paused',paused);motionButton.setAttribute('aria-pressed',String(paused));motionButton.setAttribute('aria-label',paused?'Play animations':'Pause animations');motionButton.innerHTML=paused?'<span aria-hidden="true">▷</span> Motion off':'<span aria-hidden="true">Ⅱ</span> Motion on';window.dispatchEvent(new Event('portfolio-motion'));}
-motionButton.addEventListener('click',()=>{window.portfolioMotion.paused=!window.portfolioMotion.paused;updateMotion();});matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',e=>{window.portfolioMotion.paused=e.matches;updateMotion();});updateMotion();
-// Scramble only a visual copy; assistive technology always receives the original text.
-const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-document.querySelectorAll('[data-decode]').forEach(el=>{
- const original=el.innerText.replace(/\s+/g,' ').trim(),html=el.innerHTML;el.setAttribute('aria-label',original);const sr=document.createElement('span');sr.className='sr-only';sr.textContent=original;const visual=document.createElement('span');visual.className='decode-visual';visual.setAttribute('aria-hidden','true');visual.innerHTML='<span class="decode-original">'+html+'</span><span class="decode-live">'+html+'</span>';el.replaceChildren(sr,visual);const live=visual.querySelector('.decode-live');let raf=0;
- const restore=()=>{cancelAnimationFrame(raf);raf=0;live.innerHTML=html;live.classList.remove('decoding');};
- const decode=()=>{if(window.portfolioMotion.paused||raf)return;const started=performance.now();live.innerHTML=html;const walker=document.createTreeWalker(live,NodeFilter.SHOW_TEXT);const nodes=[];let node,total=0;while(node=walker.nextNode()){nodes.push({node,text:node.textContent,start:total});total+=node.textContent.length;}live.classList.add('decoding');function run(now){const progress=Math.min((now-started)/650,1),settled=Math.floor(progress*total);for(const item of nodes)item.node.textContent=[...item.text].map((c,i)=>/\s/.test(c)||item.start+i<settled?c:alphabet[Math.floor(Math.random()*alphabet.length)]).join('');if(progress<1)raf=requestAnimationFrame(run);else restore();}raf=requestAnimationFrame(run);};
- el.addEventListener('pointerenter',decode);el.addEventListener('focusin',decode);el.addEventListener('pointerleave',restore);el.addEventListener('focusout',restore);window.addEventListener('portfolio-motion',()=>{if(window.portfolioMotion.paused)restore();});
-});
-const progress=document.querySelector('.scroll-progress');let scrollScheduled=false;
-function updateScroll(){const d=document.documentElement;progress.style.transform=`scaleX(${Math.min(1,scrollY/Math.max(1,d.scrollHeight-innerHeight))})`;scrollScheduled=false;}
-addEventListener('scroll',()=>{if(!scrollScheduled){requestAnimationFrame(updateScroll);scrollScheduled=true;}},{passive:true});updateScroll();
-const revealObserver=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting){if(!window.portfolioMotion.paused)e.target.classList.add('reveal-enter');revealObserver.unobserve(e.target);}}},{threshold:.1});document.querySelectorAll('.section-heading,.work-card,.impact-grid,.experience-row,.education,.toolkit').forEach(el=>revealObserver.observe(el));
-// Card perspective follows the pointer, without affecting touch scrolling.
-if(matchMedia('(pointer:fine)').matches)document.querySelectorAll('.work-card').forEach(card=>{let pending=0,x=0,y=0;card.addEventListener('pointermove',e=>{if(window.portfolioMotion.paused)return;const r=card.getBoundingClientRect();x=(e.clientX-r.left)/r.width;y=(e.clientY-r.top)/r.height;card.style.setProperty('--mx',x*100+'%');card.style.setProperty('--my',y*100+'%');if(!pending)pending=requestAnimationFrame(()=>{card.style.transform=`perspective(1000px) rotateX(${(y-.5)*-3}deg) rotateY(${(x-.5)*3}deg) translateY(-4px)`;pending=0;});});const reset=()=>{cancelAnimationFrame(pending);pending=0;card.style.transform='';};card.addEventListener('pointerleave',reset);window.addEventListener('portfolio-motion',reset);});
+(() => {
+  'use strict';
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const button = document.querySelector('#motion-toggle');
+  let manuallyPaused = false;
+
+  function updateMotion() {
+    const paused = reducedMotion.matches || manuallyPaused;
+    document.documentElement.classList.toggle('motion-paused', paused);
+    if (!button) return;
+    button.hidden = false;
+    button.disabled = reducedMotion.matches;
+    button.setAttribute('aria-pressed', String(paused));
+    button.textContent = reducedMotion.matches
+      ? 'Reduced motion enabled'
+      : manuallyPaused ? 'Resume animations' : 'Pause animations';
+  }
+  button?.addEventListener('click', () => {
+    manuallyPaused = !manuallyPaused;
+    updateMotion();
+  });
+  reducedMotion.addEventListener('change', updateMotion);
+  updateMotion();
+
+  const progress = document.querySelector('.scroll-progress');
+  if (!progress) return;
+  let pending = false;
+  function updateProgress() {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    const fraction = max > 0 ? Math.max(0, Math.min(1, window.scrollY / max)) : 0;
+    progress.style.transform = `scaleX(${fraction})`;
+    pending = false;
+  }
+  function scheduleProgress() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(updateProgress);
+  }
+  window.addEventListener('scroll', scheduleProgress, { passive: true });
+  window.addEventListener('resize', scheduleProgress);
+  window.addEventListener('load', scheduleProgress, { once: true });
+  document.querySelectorAll('details').forEach(details => {
+    details.addEventListener('toggle', scheduleProgress);
+  });
+  updateProgress();
+})();
